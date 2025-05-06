@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Markdown 转图片工具</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        
+        body {
+            display: flex;
+            margin: 0;
+            min-height: 100vh;
+            font-family: "Microsoft Yahei", "Hiragino Sans GB", sans-serif;
+            background: #f8f9fa;
+            padding: 20px;
+        }
+        
+        .panel {
+            flex: 1;
+            padding: 20px;
+            margin: 10px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            min-width: 300px;
+        }
+        
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        textarea {
+            width: 100%;
+            height: calc(100% - 20px);
+            font-family: monospace;
+            font-size: 14px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            resize: none;
+            flex-grow: 1;
+        }
+        
+        #preview {
+            flex-grow: 1;
+            min-height: 0;
+            overflow-y: auto;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+        }
+        
+        /* 基础主题样式 */
+        .theme-light {
+            background: #ffffff;
+            color: #000000;
+            border-color: #ddd;
+        }
+        
+        .theme-dark {
+            background: #1e1e1e;
+            color: #ffffff;
+            border-color: #444;
+        }
+        
+        .theme-github {
+            background: #f6f8fa;
+            color: #24292e;
+            border-color: #e1e4e8;
+        }
+        
+        .theme-monokai {
+            background: #272822;
+            color: #f8f8f2;
+            border-color: #3e3d32;
+        }
+        
+        #outputContainer {
+            flex-grow: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 200px;
+            transition: all 0.3s ease;
+        }
+        
+        #outputImage {
+            max-width: 100%;
+            max-height: 100%;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            display: block;
+            transition: all 0.3s ease;
+        }
+        
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 15px;
+            align-items: center;
+        }
+        
+        .theme-select, .quality-select {
+            display: flex;
+            align-items: center;
+            margin-right: 10px;
+        }
+        
+        .theme-select select, .quality-select select {
+            padding: 4px 8px;
+            border-radius: 6px;
+            border: 1px solid #ddd;
+            font-size: 13px;
+        }
+        
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+            font-size: 14px;
+        }
+        
+        button:hover {
+            background: #0056b3;
+        }
+        
+        .spinner {
+            display: none;
+            margin-left: 8px;
+        }
+        
+        .spinner::before {
+            content: '';
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #ffffff;
+            border-top: 2px solid transparent;
+            border-radius: 50%;
+            vertical-align: middle;
+            animation: spin 0.8s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <!-- Markdown 输入面板 -->
+    <div class="panel">
+        <div class="panel-header">
+            <h2 style="margin: 0;">Markdown 源文</h2>
+            <div class="controls">
+                <button onclick="clearContent()">清空</button>
+                <button onclick="resetContent()">重置</button>
+            </div>
+        </div>
+        <textarea id="markdownInput" spellcheck="false">
+# 你好，世界
+
+这是**加粗**文本和*斜体*文本。
+
+- 列表项1
+- 列表项2
+
+> 这是一个引用
+
+\`\`\`js
+// 代码示例
+function hello() {
+    console.log("你好");
+}
+\`\`\`
+        </textarea>
+    </div>
+    
+    <!-- 预览面板 -->
+    <div class="panel">
+        <div class="panel-header">
+            <h2 style="margin: 0;">预览区域</h2>
+            <div class="controls">
+                <div class="theme-select">
+                    <label>主题：</label>
+                    <select id="themeSelector" onchange="changeTheme(this.value)">
+                        <option value="light">浅色</option>
+                        <option value="dark">深色</option>
+                        <option value="github">GitHub</option>
+                        <option value="monokai">Monokai</option>
+                    </select>
+                </div>
+                <button onclick="convert()">立即预览</button>
+            </div>
+        </div>
+        <div id="preview" class="theme-light" style="flex-grow: 1; overflow-y: auto; min-height: 200px;"></div>
+    </div>
+    
+    <!-- 图片输出面板 -->
+    <div class="panel">
+        <div class="panel-header">
+            <h2 style="margin: 0;">图片输出</h2>
+            <div class="controls">
+                <div class="quality-select">
+                    <label>图片质量：</label>
+                    <select id="qualitySelector">
+                        <option value="low">低</option>
+                        <option value="medium" selected>中</option>
+                        <option value="high">高</option>
+                        <option value="ultra">超高</option>
+                    </select>
+                </div>
+                <button onclick="convert()">
+                    生成图片
+                    <span class="spinner" id="spinner"></span>
+                </button>
+                <button onclick="downloadImage()">下载图片</button>
+                <button onclick="resetImage()">清除</button>
+            </div>
+        </div>
+        <div id="outputContainer" class="theme-light" style="display: flex; align-items: center; justify-content: center;">
+            <img id="outputImage" />
+        </div>
+    </div>
+
+    <script>
+    function getScaleByQuality(quality) {
+        // 根据质量等级返回对应的scale值
+        switch(quality) {
+            case 'low': return 1;
+            case 'medium': return 2;
+            case 'high': return 3;
+            case 'ultra': return 5;
+            default: return 2;
+        }
+    }
+    
+    function changeTheme(theme) {
+        // 更新预览区域主题
+        const preview = document.getElementById('preview');
+        preview.className = `theme-${theme}`;
+        
+        // 更新图片输出区域主题
+        const outputContainer = document.getElementById('outputContainer');
+        outputContainer.className = `theme-${theme}`;
+        
+        // 保持预览区域滚动状态
+        preview.scrollTop = 0;
+        preview.scrollLeft = 0;
+    }
+    
+    function resetImageSize() {
+        const container = document.getElementById('outputContainer');
+        const image = document.getElementById('outputImage');
+        
+        // 重置图片属性
+        image.src = '';
+        image.style.width = '';
+        image.style.height = '';
+        image.style.maxWidth = '100%';
+        image.style.maxHeight = '100%';
+        
+        // 保持当前主题样式
+        container.style.alignItems = 'center';
+        container.style.justifyContent = 'center';
+    }
+    
+    function adjustImageSize(canvas) {
+        const container = document.getElementById('outputContainer');
+        const image = document.getElementById('outputImage');
+        
+        // 获取实际图片尺寸
+        const actualWidth = canvas.width;
+        const actualHeight = canvas.height;
+        
+        // 根据实际图片比例调整显示
+        if (actualWidth / actualHeight > container.offsetWidth / container.offsetHeight) {
+            image.style.width = '100%';
+            image.style.height = 'auto';
+            container.style.alignItems = 'flex-start';
+            container.style.justifyContent = 'center';
+        } else {
+            image.style.width = 'auto';
+            image.style.height = '100%';
+            container.style.alignItems = 'center';
+            container.style.justifyContent = 'flex-start';
+        }
+    }
+    
+    function convert() {
+        const spinner = document.getElementById('spinner');
+        const buttons = document.querySelectorAll('button');
+        
+        // 禁用所有按钮并显示加载动画
+        buttons.forEach(btn => {
+            btn.disabled = true;
+            if (btn.querySelector('.spinner')) {
+                btn.querySelector('.spinner').style.display = 'inline-block';
+            }
+        });
+        
+        // 重置图片显示并保持主题
+        const image = document.getElementById('outputImage');
+        const container = document.getElementById('outputContainer');
+        image.src = '';
+        image.style.maxWidth = '100%';
+        image.style.maxHeight = '100%';
+        container.style.alignItems = 'center';
+        container.style.justifyContent = 'center';
+        
+        // 获取质量设置
+        const quality = document.getElementById('qualitySelector').value;
+        const scale = getScaleByQuality(quality);
+        
+        const markdown = document.getElementById('markdownInput').value;
+        const preview = document.getElementById('preview');
+        preview.innerHTML = marked.parse(markdown);
+        
+        // 获取当前主题
+        const currentTheme = document.getElementById('themeSelector').value;
+        
+        // 应用主题样式
+        changeTheme(currentTheme);
+        
+        // 使用指定scale生成图片
+        html2canvas(preview, {
+            scale: scale,
+            useCORS: true,
+            logging: false,
+            backgroundColor: null // 保持透明背景
+        }).then(canvas => {
+            // 获取图片数据并显示
+            const imgData = canvas.toDataURL('image/png');
+            
+            // 创建临时图片加载以获取真实尺寸
+            const tempImg = new Image();
+            tempImg.onload = function() {
+                // 应用最终显示调整
+                adjustImageSize(tempImg);
+                image.src = imgData;
+                
+                // 重新启用所有按钮
+                buttons.forEach(btn => {
+                    btn.disabled = false;
+                    if (btn.querySelector('.spinner')) {
+                        btn.querySelector('.spinner').style.display = 'none';
+                    }
+                });
+            };
+            tempImg.src = imgData;
+        });
+    }
+    
+    function clearContent() {
+        document.getElementById('markdownInput').value = '';
+        document.getElementById('preview').innerHTML = '';
+        resetImage();
+    }
+    
+    function resetContent() {
+        document.getElementById('markdownInput').value = `# 你好，世界
+
+这是**加粗**文本和*斜体*文本。
+
+- 列表项1
+- 列表项2
+
+> 这是一个引用
+
+\`\`\`js
+// 代码示例
+function hello() {
+    console.log("你好");
+}
+\`\`\``;
+        convert();
+    }
+    
+    function resetImage() {
+        resetImageSize();
+        // 保持当前主题
+        const currentTheme = document.getElementById('themeSelector').value;
+        const container = document.getElementById('outputContainer');
+        container.className = `theme-${currentTheme}`;
+        container.style.alignItems = 'center';
+        container.style.justifyContent = 'center';
+        document.getElementById('outputImage').src = '';
+    }
+    
+    function downloadImage() {
+        const image = document.getElementById('outputImage').src;
+        if (!image) return;
+        
+        fetch(image)
+            .then(res => res.blob())
+            .then(blob => {
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = 'markdown-图片.png';
+                a.click();
+            });
+    }
+    
+    // 初始化加载默认内容
+    document.getElementById('markdownInput').value = `# 你好，世界
+
+这是**加粗**文本和*斜体*文本。
+
+- 列表项1
+- 制表项2
+
+> 这是一个引用
+
+\`\`\`js
+// 代码示例
+function hello() {
+    console.log("你好");
+}
+\`\`\``;
+    convert();
+    </script>
+</body>
+</html>
